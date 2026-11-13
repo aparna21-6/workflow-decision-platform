@@ -1,0 +1,44 @@
+{
+  "name": "claim_processing",
+  "version": 1,
+  "description": "Insurance claim: mandatory checks, fraud-score dependency, score/amount based routing.",
+  "schema": {
+    "fields": {
+      "claim_type": {"type": "string", "required": true, "enum": ["auto", "health", "property"]},
+      "claim_amount": {"type": "number", "required": true, "min": 0.01},
+      "incident_date": {"type": "string", "required": true, "pattern": "\\d{4}-\\d{2}-\\d{2}"},
+      "policy_active": {"type": "boolean", "required": true},
+      "documents_attached": {"type": "boolean", "required": true}
+    }
+  },
+  "start": "mandatory_checks",
+  "stages": {
+    "mandatory_checks": {
+      "type": "rules",
+      "rules": [
+        {"id": "C1", "description": "Policy must be active", "on_fail": "REJECT",
+         "check": {"field": "input.policy_active", "op": "eq", "value": true}},
+        {"id": "C2", "description": "Supporting documents must be attached", "on_fail": "MANUAL_REVIEW",
+         "check": {"field": "input.documents_attached", "op": "eq", "value": true}}
+      ],
+      "next": "fraud_check"
+    },
+    "fraud_check": {
+      "type": "dependency", "service": "fraud_score", "params": {"amount": "input.claim_amount"},
+      "result_key": "fraud", "max_attempts": 3, "backoff_seconds": 0.2,
+      "on_exhausted": "MANUAL_REVIEW", "next": "route"
+    },
+    "route": {
+      "type": "branch",
+      "branches": [
+        {"when": {"field": "ext.fraud.score", "op": "gte", "value": 80}, "goto": "reject_fraud"},
+        {"when": {"all": [{"field": "input.claim_amount", "op": "lte", "value": 10000},
+                          {"field": "ext.fraud.score", "op": "lt", "value": 50}]}, "goto": "auto_approve"}
+      ],
+      "default": "manual_review"
+    },
+    "reject_fraud": {"type": "terminal", "outcome": "REJECTED", "reason": "Fraud score too high"},
+    "auto_approve": {"type": "terminal", "outcome": "APPROVED", "reason": "Small claim, low fraud risk"},
+    "manual_review": {"type": "terminal", "outcome": "MANUAL_REVIEW", "reason": "Needs adjuster review"}
+  }
+}

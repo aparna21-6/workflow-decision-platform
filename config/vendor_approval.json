@@ -1,0 +1,71 @@
+{
+  "name": "vendor_approval",
+  "version": 1,
+  "description": "Vendor onboarding: mandatory checks, sanctions screening (external), thresholds, conditional enhanced review.",
+  "schema": {
+    "fields": {
+      "vendor_name": {"type": "string", "required": true, "min_length": 2},
+      "country": {"type": "string", "required": true, "pattern": "[A-Z]{2}"},
+      "tax_id": {"type": "string", "required": true, "pattern": "[A-Z0-9]{8,15}"},
+      "annual_revenue": {"type": "number", "required": true, "min": 0},
+      "years_in_business": {"type": "integer", "required": true, "min": 0},
+      "has_insurance": {"type": "boolean", "required": true},
+      "requested_credit_limit": {"type": "number", "required": true, "min": 0}
+    }
+  },
+  "start": "mandatory_checks",
+  "stages": {
+    "mandatory_checks": {
+      "type": "rules",
+      "rules": [
+        {"id": "V1", "description": "Vendor must hold valid insurance", "on_fail": "REJECT",
+         "check": {"field": "input.has_insurance", "op": "eq", "value": true}},
+        {"id": "V2", "description": "Vendor must be in business at least 1 year", "on_fail": "REJECT",
+         "check": {"field": "input.years_in_business", "op": "gte", "value": 1}}
+      ],
+      "next": "sanctions_screen"
+    },
+    "sanctions_screen": {
+      "type": "dependency", "service": "sanctions",
+      "params": {"name": "input.vendor_name", "country": "input.country"},
+      "result_key": "sanctions", "max_attempts": 3, "backoff_seconds": 0.2,
+      "on_exhausted": "PENDING_RETRY", "next": "sanctions_eval"
+    },
+    "sanctions_eval": {
+      "type": "rules",
+      "rules": [
+        {"id": "S1", "description": "Vendor/country must not be on sanctions list", "on_fail": "REJECT",
+         "check": {"field": "ext.sanctions.flagged", "op": "eq", "value": false}}
+      ],
+      "next": "risk_thresholds"
+    },
+    "risk_thresholds": {
+      "type": "rules",
+      "rules": [
+        {"id": "T1", "description": "Annual revenue must be at least 50,000", "on_fail": "REJECT",
+         "check": {"field": "input.annual_revenue", "op": "gte", "value": 50000}},
+        {"id": "T2", "description": "Credit limit above 500,000 needs a human", "on_fail": "MANUAL_REVIEW",
+         "check": {"field": "input.requested_credit_limit", "op": "lte", "value": 500000}}
+      ],
+      "next": "route_by_exposure"
+    },
+    "route_by_exposure": {
+      "type": "branch",
+      "branches": [
+        {"when": {"field": "input.requested_credit_limit", "op": "gt", "value": 100000}, "goto": "enhanced_review"}
+      ],
+      "default": "approve"
+    },
+    "enhanced_review": {
+      "type": "rules",
+      "rules": [
+        {"id": "E1", "description": "High exposure needs 3+ years in business", "on_fail": "MANUAL_REVIEW",
+         "check": {"field": "input.years_in_business", "op": "gte", "value": 3}},
+        {"id": "E2", "description": "High exposure needs revenue of 1,000,000+", "on_fail": "MANUAL_REVIEW",
+         "check": {"field": "input.annual_revenue", "op": "gte", "value": 1000000}}
+      ],
+      "next": "approve"
+    },
+    "approve": {"type": "terminal", "outcome": "APPROVED", "reason": "All checks passed"}
+  }
+}
