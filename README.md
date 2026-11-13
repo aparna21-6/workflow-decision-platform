@@ -69,3 +69,84 @@ New requests use it; in-flight requests keep the version they started with.
 
 **Add a new business use case:** write a new JSON file. No Python changes. (Test `test_brand_new_workflow_needs_only_config`.)
 **Add a new external service:** `deps.register("name", callable)` in `wfp/app.py`.
+
+## Assignment Output & Execution Report
+
+### 1. Test Suite Execution
+The platform includes 26 unit tests covering happy paths, schema validation, idempotency, dependency failures, partial saves, and rule changes.
+```text
+C:\> python -m unittest discover -s tests -v
+...
+Ran 26 tests in 0.225s
+
+OK
+
+{
+  "request_id": "c75bcc3733ca44dd918ac135d1c91982",
+  "workflow": "vendor_approval",
+  "workflow_version": 1,
+  "status": "APPROVED",
+  "current_stage": "approve",
+  "updated_at": "2026-11-13T08:53:54.329+00:00",
+  "duplicate": false
+}
+
+{
+  "request_id": "c75bcc3733ca44dd918ac135d1c91982",
+  "workflow": "vendor_approval",
+  "workflow_version": 1,
+  "status": "APPROVED",
+  "final_stage": "approve",
+  "stage_path": [
+    "mandatory_checks",
+    "sanctions_screen",
+    "sanctions_eval",
+    "risk_thresholds",
+    "route_by_exposure",
+    "approve"
+  ],
+  "rules_evaluated": [
+    {
+      "rule_id": "V1",
+      "stage": "mandatory_checks",
+      "description": "Vendor must hold valid insurance",
+      "result": "PASS",
+      "on_fail": "REJECT",
+      "conditions": [
+        {
+          "field": "input.has_insurance",
+          "op": "eq",
+          "expected": true,
+          "observed": true,
+          "found": true,
+          "result": true
+        }
+      ]
+    },
+    {
+      "rule_id": "T1",
+      "stage": "risk_thresholds",
+      "description": "Annual revenue must be at least 50,000",
+      "result": "PASS",
+      "on_fail": "REJECT",
+      "conditions": [
+        {
+          "field": "input.annual_revenue",
+          "op": "gte",
+          "expected": 50000,
+          "observed": 2500000,
+          "found": true,
+          "result": true
+        }
+      ]
+    }
+  ],
+  "failed_rules": [],
+  "reasoning": [
+    "Request c75bcc3733ca44dd918ac135d1c91982 was processed by workflow'vendor_approval' v1 and is APPROVED.",
+    "Rules passed: V1, V2, S1, T1, T2.",
+    "Call to 'sanctions' succeeded (attempt 1/3).",
+    "Final outcome APPROVED: All checks passed."
+  ]
+}
+
