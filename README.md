@@ -70,7 +70,7 @@ New requests use it; in-flight requests keep the version they started with.
 **Add a new business use case:** write a new JSON file. No Python changes. (Test `test_brand_new_workflow_needs_only_config`.)
 **Add a new external service:** `deps.register("name", callable)` in `wfp/app.py`.
 
-## Assignment Output & Execution Report
+## Output & Execution Report
 
 ### 1. Test Suite Execution
 The platform includes 26 unit tests covering happy paths, schema validation, idempotency, dependency failures, partial saves, and rule changes.
